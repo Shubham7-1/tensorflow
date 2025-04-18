@@ -558,23 +558,23 @@ tf_python_pybind_extension(
     ],
 )
 
-tf_python_pybind_extension(
-    name = "_pywrap_toco_api",
-    srcs = [
-        "lite/toco_python_api_wrapper.cc",
-    ],
-    hdrs = ["//tensorflow/lite/toco/python:toco_python_api_hdrs"],
-    enable_stub_generation = True,
-    pytype_srcs = [
-        "_pywrap_toco_api.pyi",
-    ],
-    deps = [
-        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
-        "//tensorflow/python/lib/core:pybind11_lib",
-        "//third_party/python_runtime:headers",
-        "@pybind11",
-    ] + if_pywrap(["//tensorflow/lite/toco/python:toco_python_api"]),
-)
+# tf_python_pybind_extension(
+#     name = "_pywrap_toco_api",
+#     srcs = [
+#         "lite/toco_python_api_wrapper.cc",
+#     ],
+#     hdrs = ["//tensorflow/lite/toco/python:toco_python_api_hdrs"],
+#     enable_stub_generation = True,
+#     pytype_srcs = [
+#         "_pywrap_toco_api.pyi",
+#     ],
+#     deps = [
+#         "@pybind11",
+#         "//third_party/python_runtime:headers",
+#         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
+#         "//tensorflow/python/lib/core:pybind11_lib",
+#     ] + if_pywrap(["//tensorflow/lite/toco/python:toco_python_api"]),
+# )
 
 # TODO(edloper): Remove unused dependency on safe_ptr.  (Blocker: there are
 # targets that depend are relying on cpp_python_util to pull in safe_ptr's
@@ -1647,7 +1647,7 @@ pywrap_library(
         "//tensorflow/python:_pywrap_tensorflow_internal",
         "//tensorflow/python:_pywrap_tfcompile",
         "//tensorflow/python:_pywrap_tfe",
-        "//tensorflow/python:_pywrap_toco_api",
+        # "//tensorflow/python:_pywrap_toco_api",
         "//tensorflow/python:flags_pybind",
         "//tensorflow/python/autograph/impl/testing:pybind_for_testing",
         "//tensorflow/python/client:_pywrap_debug_events_writer",
