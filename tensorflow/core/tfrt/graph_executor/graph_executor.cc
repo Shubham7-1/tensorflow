@@ -58,13 +58,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/lib/monitoring/sampler.h"
+#include "tensorflow/core/common_runtime/cost_util.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/common_runtime/request_cost_accessor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
@@ -128,6 +131,8 @@ constexpr char kTensorNameJoiningDelimiter[] = "-";
 constexpr char kArgumentTypeJoiningDelimiter[] = "^";
 constexpr char kFallbackInitFunction[] = "_tfrt_fallback_init";
 constexpr char kResourceInitFunction[] = "_tfrt_resource_init";
+constexpr char kExecutionTimeMicrosecondsMetric[] =
+    "execution_time_microseconds";
 
 StepId GetNextStepId() {
   static StepIdGenerator gen;
@@ -204,10 +209,24 @@ absl::Status RunMlrtFunction(
 
   // TODO(chky): Set up cancellation.
 
-  work_queue.AddTask(
-      [&execution_context]() { mlrt::Execute(execution_context); });
+  uint64_t execution_time_microseconds = 0;
+  work_queue.AddTask([&execution_context, &execution_time_microseconds]() {
+    const uint64_t start_microseconds = EnvTime::NowMicros();
+    mlrt::Execute(execution_context);
+    const uint64_t end_microseconds = EnvTime::NowMicros();
+    execution_time_microseconds = end_microseconds - start_microseconds;
+  });
 
   work_queue.Await(chain);
+
+  std::unique_ptr<tensorflow::RequestCostAccessor> cost_accessor =
+      tensorflow::CreateRequestCostAccessor();
+  if (cost_accessor != nullptr &&
+      function.name().str() != kFallbackInitFunction &&
+      function.name().str() != kResourceInitFunction) {
+    cost_accessor->GetRequestCost()->RecordMetrics(
+        {{kExecutionTimeMicrosecondsMetric, execution_time_microseconds}});
+  }
 
   if (!execution_context.status().ok()) {
     outputs->resize(mlrt_outputs.size(), tensorflow::Tensor());

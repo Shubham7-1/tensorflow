@@ -20,10 +20,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "base/googleinit.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/sync_fallback_kernels.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -32,6 +34,10 @@ limitations under the License.
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/common_runtime/cost_util.h"
+#include "tensorflow/core/common_runtime/request_cost.h"
+#include "tensorflow/core/common_runtime/request_cost_accessor.h"
+#include "tensorflow/core/common_runtime/request_cost_accessor_registry.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -42,8 +48,8 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/config.h"
@@ -52,7 +58,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/interpreter/value.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
-#include "tsl/platform/statusor.h"
 #include "tfrt/cpp_tests/test_util.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 #include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
@@ -95,6 +100,21 @@ std::unique_ptr<mlrt::KernelRegistry> GetKernelRegistry() {
   return kernel_registry;
 }
 
+REGISTER_MODULE_INITIALIZER(set_tf_request_cost_accessor_type, {
+  class TestRequestCostAccessor : public RequestCostAccessor {
+   public:
+    RequestCost* GetRequestCost() const override {
+      static RequestCost* request_cost = new RequestCost();
+      return request_cost;
+    }
+  };
+  setenv("TF_REQUEST_COST_ACCESSOR_TYPE", "graph_executor_test",
+         1 /*overwrite*/);
+  RequestCostAccessorRegistry::RegisterRequestCostAccessor(
+      "graph_executor_test",
+      []() { return std::make_unique<TestRequestCostAccessor>(); });
+});
+
 TEST_P(GraphExecutorTest, Vanilla) {
   GraphDef graph_def;
   TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
@@ -128,6 +148,20 @@ TEST_P(GraphExecutorTest, Vanilla) {
 
   EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
               ::testing::ElementsAreArray({2}));
+
+  const std::string kExecutionTimeMicrosecondsMetric =
+      "execution_time_microseconds";
+  std::unique_ptr<tensorflow::RequestCostAccessor> cost_accessor =
+      tensorflow::CreateRequestCostAccessor();
+  ASSERT_THAT(cost_accessor, testing::NotNull());
+  const absl::flat_hash_map<std::string, double>& metrics =
+      cost_accessor->GetRequestCost()->GetMetrics();
+  if (GetParam()) {
+    EXPECT_TRUE(metrics.contains(kExecutionTimeMicrosecondsMetric));
+    EXPECT_GT(metrics.at(kExecutionTimeMicrosecondsMetric), 0);
+  } else {
+    EXPECT_FALSE(metrics.contains(kExecutionTimeMicrosecondsMetric));
+  }
 }
 
 TEST_P(GraphExecutorTest, OnlineCostAnalysisOptionsOverrideToOnce) {
