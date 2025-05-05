@@ -436,9 +436,18 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
   if (permutation.size() < 2) {
     return std::nullopt;
   }
-  auto byte_width = primitive_util::ByteWidth(hero.shape().element_type());
+  auto bit_width = primitive_util::BitWidth(hero.shape().element_type());
   absl::InlinedVector<int64_t, 3> dimensions(hero.shape().dimensions().begin(),
                                              hero.shape().dimensions().end());
+  // TODO(b/415741994): TransposeEmitter is regressing for S4 when the last
+  // dimension is being transposed. The issue seems to be related to bank
+  // conflicts but a proper investigation is needed. As a temporary solution we
+  // could use PackedTransposeEmitter for some of those cases but we need to fix
+  // an issue with shared memory usage first (cl/752741717).
+  if ((permutation.back() != dimensions.size() - 1) &&
+      (primitive_util::BitWidth(hero.shape().element_type()) == 4)) {
+    return std::nullopt;
+  }
   int64_t operand_most_minor_dim = hero.operand(0)->shape().dimensions().back();
   if (CanEmitPackedTranspose(*Cast<HloTransposeInstruction>(&hero))) {
     int64_t vector_size =
@@ -451,14 +460,15 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
   if (permutation.back() == dimensions.size() - 1) {
     operand_most_minor_dim =
         hero.operand(0)->shape().dimensions(dimensions.size() - 2);
-    if (byte_width * dimensions.back() <= kMaxBytesInMostMinorDimension &&
-        byte_width * dimensions.back() *
+    if (bit_width * dimensions.back() <= kMaxBitsInMostMinorDimension &&
+        bit_width * dimensions.back() *
                 std::min(operand_most_minor_dim,
                          dimensions[dimensions.size() - 2]) >=
-            kMinDimensionToTransposeTiled) {
+            8 * kMinDimensionToTransposeTiled) {
       // Tile size for transposition.
-      int64_t shmem_usage_bytes = kNumShmemBanks * (kNumShmemBanks + 1) *
-                                  byte_width * dimensions.back();
+      int64_t shmem_usage_bytes = CeilOfRatio(
+          kNumShmemBanks * (kNumShmemBanks + 1) * bit_width * dimensions.back(),
+          8L);
       return TransposeDescription{&hero, dimensions, permutation,
                                   shmem_usage_bytes};
     }
@@ -469,7 +479,7 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
               operand_most_minor_dim * dimensions.back() >=
                   kMinTotalDimensionsToTransposeTiled)) {
     int64_t shmem_usage_bytes =
-        kNumShmemBanks * (kNumShmemBanks + 1) * byte_width;
+        CeilOfRatio(kNumShmemBanks * (kNumShmemBanks + 1) * bit_width, 8L);
     return TransposeDescription{&hero, dimensions, permutation,
                                 shmem_usage_bytes};
   }
