@@ -36,7 +36,7 @@ using ::stream_executor::gpu::TmaDescriptor;
 // @triton/third_party/nvidia/backend/cuda_utils.cc
 absl::StatusOr<TmaDescriptor> Create2DTmaDescriptor(
     llvm::ArrayRef<int64_t> global_shape, llvm::ArrayRef<int64_t> block_shape,
-    int element_byte_size) {
+    int element_byte_size, int swizzle_mode) {
   if (global_shape.size() != 2) {
     return absl::InvalidArgumentError("expected 2D global shape");
   }
@@ -52,17 +52,24 @@ absl::StatusOr<TmaDescriptor> Create2DTmaDescriptor(
   SmallVector<uint32_t, 2> box_dims = {static_cast<uint32_t>(block_shape[1]),
                                        static_cast<uint32_t>(block_shape[0])};
   SmallVector<uint32_t, 2> element_strides = {1, 1};
-  TmaDescriptor::TmaSwizzle swizzle;
-  uint32_t contig_dim_size_in_byte = element_byte_size * box_dims[0];
-  if (contig_dim_size_in_byte >= 128) {
-    swizzle = TmaDescriptor::TmaSwizzle::k128B;
-  } else if (contig_dim_size_in_byte >= 64) {
-    swizzle = TmaDescriptor::TmaSwizzle::k64B;
-  } else if (contig_dim_size_in_byte >= 32) {
-    swizzle = TmaDescriptor::TmaSwizzle::k32B;
-  } else {
-    return absl::FailedPreconditionError("contiguous dimension size too small");
+  TmaDescriptor::TmaSwizzle swizzle = TmaDescriptor::TmaSwizzle::kNone;
+  switch (swizzle_mode) {
+    case 0:
+      swizzle = TmaDescriptor::TmaSwizzle::kNone;
+      break;
+    case 1:
+      swizzle = TmaDescriptor::TmaSwizzle::k32B;
+      break;
+    case 2:
+      swizzle = TmaDescriptor::TmaSwizzle::k64B;
+      break;
+    case 3:
+      swizzle = TmaDescriptor::TmaSwizzle::k128B;
+      break;
+    default:
+      swizzle = TmaDescriptor::TmaSwizzle::kNone;
   }
+  uint32_t contig_dim_size_in_byte = element_byte_size * box_dims[0];
   if (contig_dim_size_in_byte > 128) {
     box_dims[0] = 128 / element_byte_size;
   }
