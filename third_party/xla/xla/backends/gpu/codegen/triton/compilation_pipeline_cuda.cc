@@ -126,6 +126,7 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
     pm->addPass(mlir::createTritonNvidiaGPUTMALoweringPass());
   }
   pm->addPass(mlir::createCanonicalizerPass());
+  pm->addPass(mt_xla::CreateExtractTmaInfoPass());
 
   // Based on make_llir() in
   // @triton//:third_party/nvidia/backend/compiler.py
