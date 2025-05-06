@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/status_macros.h"
 
+#include <cstddef>
+#include <ostream>
 #include <string>
 
 #include "absl/base/attributes.h"
@@ -30,6 +32,82 @@ limitations under the License.
 
 namespace xla {
 namespace status_macros {
+
+namespace internal {
+void PrintToStream(char v, std::ostream* os) {
+  if (v >= 32 && v <= 126) {
+    *os << "'" << v << "'";
+  } else {
+    *os << "char value " << int{v};
+  }
+}
+
+void PrintToStream(signed char v, std::ostream* os) {
+  if (v >= 32 && v <= 126) {
+    *os << "'" << v << "'";
+  } else {
+    *os << "signed char value " << int{v};
+  }
+}
+
+void PrintToStream(unsigned char v, std::ostream* os) {
+  if (v >= 32 && v <= 126) {
+    *os << "'" << v << "'";
+  } else {
+    *os << "unsigned char value " << int{v};
+  }
+}
+
+void PrintToStream(std::nullptr_t, std::ostream* os) { *os << "nullptr"; }
+
+void PrintToStream(const char* v, std::ostream* os) {
+  if (v == nullptr) {
+    *os << "nullptr";
+  } else {
+    *os << v;
+  }
+}
+
+void PrintToStream(const signed char* v, std::ostream* os) {
+  if (v == nullptr) {
+    *os << "nullptr";
+  } else {
+    *os << v;
+  }
+}
+
+void PrintToStream(const unsigned char* v, std::ostream* os) {
+  if (v == nullptr) {
+    *os << "nullptr";
+  } else {
+    *os << v;
+  }
+}
+
+void PrintToStream(char* v, std::ostream* os) {
+  if (v == nullptr) {
+    *os << "nullptr";
+  } else {
+    *os << v;
+  }
+}
+
+void PrintToStream(signed char* v, std::ostream* os) {
+  if (v == nullptr) {
+    *os << "nullptr";
+  } else {
+    *os << v;
+  }
+}
+
+void PrintToStream(unsigned char* v, std::ostream* os) {
+  if (v == nullptr) {
+    *os << "nullptr";
+  } else {
+    *os << v;
+  }
+}
+}  // namespace internal
 
 ABSL_CONST_INIT const char kPossibleAutoJitAlternative[] =
     "This error might be occurring with the use of xla.compile. If it is not "

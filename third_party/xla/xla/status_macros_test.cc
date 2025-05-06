@@ -60,6 +60,48 @@ absl::Status XlaRetCheckFailLogWarning() {
       << "xla ret check fail message";
 }
 
+// A type that has `AbslStringify` but not `operator<<`.
+struct HasOnlyAbslStringify {
+  int i;
+
+  bool operator==(const HasOnlyAbslStringify& h) const { return i == h.i; }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const HasOnlyAbslStringify& h) {
+    absl::Format(&sink, "Stringify-%v", h.i);
+  }
+};
+
+absl::Status RetCheckPrintAbslStringify() {
+  HasOnlyAbslStringify h = {123};
+  TF_RET_CHECK(false) << h;
+  return absl::OkStatus();
+}
+
+absl::Status RetCheckPrintChar() {
+  char c = 'x';
+  TF_RET_CHECK(false) << c;
+  return absl::OkStatus();
+}
+
+absl::Status RetCheckPrintUnreadableChar() {
+  signed char c = static_cast<char>(127);
+  TF_RET_CHECK(false) << c;
+  return absl::OkStatus();
+}
+
+absl::Status RetCheckPrintCString() {
+  const char* s = "extra message";
+  TF_RET_CHECK(false) << s;
+  return absl::OkStatus();
+}
+
+absl::Status RetCheckPrintNullptr() {
+  const unsigned char* v = nullptr;
+  TF_RET_CHECK(false) << v;
+  return absl::OkStatus();
+}
+
 TEST(StatusMacros, RetCheckFailing) {
   absl::Status status = RetCheckFail();
   EXPECT_EQ(status.code(), tsl::error::INTERNAL);
@@ -174,6 +216,39 @@ TEST(StatusMacros, XlaRetCheckFailLogWarning) {
   absl::Status status = XlaRetCheckFailLogWarning();
   EXPECT_EQ(status.code(), tsl::error::INTERNAL);
   EXPECT_THAT(status.message(), ::testing::HasSubstr(kExpectedLog));
+}
+
+TEST(StatusMacros, RetCheckPrintAbslStringify) {
+  absl::Status status = RetCheckPrintAbslStringify();
+  EXPECT_EQ(status.code(), tsl::error::INTERNAL);
+  EXPECT_THAT(status.message(),
+              ::testing::ContainsRegex("RET_CHECK.*Stringify-123"));
+}
+
+TEST(StatusMacros, RetCheckPrintChar) {
+  absl::Status status = RetCheckPrintChar();
+  EXPECT_EQ(status.code(), tsl::error::INTERNAL);
+  EXPECT_THAT(status.message(), ::testing::ContainsRegex("RET_CHECK.*'x'"));
+}
+
+TEST(StatusMacros, RetCheckPrintCString) {
+  absl::Status status = RetCheckPrintCString();
+  EXPECT_EQ(status.code(), tsl::error::INTERNAL);
+  EXPECT_THAT(status.message(),
+              ::testing::ContainsRegex("RET_CHECK.*extra message"));
+}
+
+TEST(StatusMacros, RetCheckPrintUnreadableChar) {
+  absl::Status status = RetCheckPrintUnreadableChar();
+  EXPECT_EQ(status.code(), tsl::error::INTERNAL);
+  EXPECT_THAT(status.message(),
+              ::testing::ContainsRegex("RET_CHECK.*signed char value 127"));
+}
+
+TEST(StatusMacros, RetCheckPrintNullptr) {
+  absl::Status status = RetCheckPrintNullptr();
+  EXPECT_EQ(status.code(), tsl::error::INTERNAL);
+  EXPECT_THAT(status.message(), ::testing::ContainsRegex("RET_CHECK.*nullptr"));
 }
 
 }  // namespace xla
