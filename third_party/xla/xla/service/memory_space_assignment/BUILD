@@ -683,3 +683,12 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test",
     ],
 )
+
+xla_cc_test(
+    name = "utils_test",
+    srcs = ["utils_test.cc"],
+    deps = [
+        ":utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
