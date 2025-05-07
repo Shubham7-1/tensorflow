@@ -2777,6 +2777,41 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::ValuesIn(AllDevicesToTest())),
     TritonSupportTestTypeAndDeviceToString);
 
+using TopKTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
+
+TEST_P(TopKTest, TopKLargest3D) {
+  auto [data_type, opcode, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  operand = $0[11,33,77] parameter(0)
+  ROOT topk_op = ($0[11,33,10], s32[11,33,10]) topk(operand), k=10, largest=true
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  RunSupportTestMultipleOutputTiles(
+      std::move(ti),
+      /*output_tile_sizes=*/{{2, 2, 1}, {2, 2, 1}}, cc);
+}
+
+TEST_P(TopKTest, TopKSmallest1D) {
+  auto [data_type, opcode, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  operand = $0[77] parameter(0)
+  ROOT topk_op = ($0[3], s32[3]) topk(operand), k=3, largest=false
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  RunSupportTestMultipleOutputTiles(std::move(ti),
+                                    /*output_tile_sizes=*/{{1}, {1}}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(TopKSuite, TopKTest,
+                         AllTestCombinationsForOpcodes({HloOpcode::kTopK}),
+                         TritonSupportTestTypeAndOpcodeAndDeviceToString);
+
 constexpr std::array kUnsupportedOps = {
     // clang-format off
     // go/keep-sorted start
@@ -2798,7 +2833,6 @@ constexpr std::array kUnsupportedOps = {
     HloOpcode::kSetDimensionSize,
     HloOpcode::kSort,
     HloOpcode::kStochasticConvert,
-    HloOpcode::kTopK,
     HloOpcode::kTriangularSolve,
     HloOpcode::kTuple,
     // go/keep-sorted end
@@ -2850,6 +2884,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kFusion);
   ret.emplace(HloOpcode::kInfeed);
   ret.emplace(HloOpcode::kOutfeed);
+  ret.emplace(HloOpcode::kTopK);
   ret.insert(kUnsupportedOps.begin(), kUnsupportedOps.end());
 
   return ret;
